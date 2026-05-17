@@ -1,0 +1,26 @@
+[package]
+name = "vision-brain"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "vision-brain"
+path = "src/main.rs"
+
+[dependencies]
+rmcp = { version = "1", features = ["server", "transport-io", "schemars"] }
+screenshots = "0.8"
+image = "0.25"
+rusqlite = { version = "0.31", features = ["bundled"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+strsim = "0.11"
+plist = "1"
+clap = { version = "4", features = ["derive"] }

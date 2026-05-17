@@ -1,0 +1,26 @@
+# Build artifacts
+target/
+*.exe
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backups
+*.bak.zip
+*.bak
+
+# Python
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+
+# IDE / local config
+.claude/
+.idea/
+.vscode/
+
+# Environment
+.env

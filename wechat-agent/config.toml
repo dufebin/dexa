@@ -1,0 +1,27 @@
+[binaries]
+# wx-cli binary (must be on PATH or absolute path)
+wx   = "D:\\workspace\\dexa\\wechat-agent\\crates\\wx-cli\\wx-cli.exe"
+# desktop-hand binary
+hand = "D:\\workspace\\dexa\\desktop-hand\\target\\release\\hand.exe"
+
+[claude]
+api_key       = ""   # set via WX_AGENT_API_KEY env var or here
+reply_model   = "claude-haiku-4-5-20251001"
+distill_model = "claude-sonnet-4-6"
+
+[agent]
+# "semi" = confirm each reply, "auto" = send automatically
+mode           = "semi"
+# seconds between polling wx new-messages
+poll_interval  = 5
+# max characters in a generated reply
+reply_max_len  = 80
+# only auto-reply to contacts that have been distilled
+require_profile = true
+
+[wechat]
+# 用 hand.exe 发送 ctrl+q 快捷键唤出/隐藏微信
+activate_cmd = "D:\\workspace\\dexa\\desktop-hand\\target\\release\\hand.exe key combo --keys ctrl+q"
+search_key   = "ctrl+f"
+# activate_cmd  = "open -a WeChat"        # macOS 默认
+# activate_cmd  = "cmd /c start WeChat.exe"  # Windows 直接启动
