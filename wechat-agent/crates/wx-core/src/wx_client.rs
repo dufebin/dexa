@@ -8,12 +8,6 @@ pub struct WxClient {
     pub bin: PathBuf,
 }
 
-#[derive(serde::Deserialize)]
-struct ExportWrapper {
-    #[serde(default)]
-    messages: Vec<WxMessage>,
-}
-
 impl WxClient {
     pub fn new(bin: impl Into<PathBuf>) -> Self {
         Self { bin: bin.into() }
@@ -23,39 +17,40 @@ impl WxClient {
     where
         T: for<'de> serde::Deserialize<'de>,
     {
-        let mut all_args: Vec<&str> = args.to_vec();
-        all_args.push("--json");
-
         let output = Command::new(&self.bin)
-            .args(&all_args)
+            .args(args)
             .output()
             .await
-            .with_context(|| format!("failed to spawn: wx {}", all_args.join(" ")))?;
+            .with_context(|| format!("failed to spawn: wx {}", args.join(" ")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("wx {} failed: {stderr}", all_args.join(" "));
+            anyhow::bail!("wx {} failed: {stderr}", args.join(" "));
         }
 
-        // wx-cli may return an empty array if there is nothing to report;
-        // parse normally and let the caller decide what to do.
         serde_json::from_slice(&output.stdout)
-            .with_context(|| format!("parse error for: wx {}", all_args.join(" ")))
+            .with_context(|| format!("parse error for: wx {}", args.join(" ")))
     }
 
     pub async fn get_local_user(&self) -> String {
-        if let Ok(msgs) = self.run_json::<Vec<WxMessage>>(&["history", "文件传输助手", "--limit", "10"]).await {
+        if let Ok(msgs) = self
+            .run_json::<Vec<WxMessage>>(&["history", "文件传输助手", "-n", "10", "--format", "json"])
+            .await
+        {
             for m in msgs {
                 if !m.sender.is_empty() {
                     return m.sender;
                 }
             }
         }
-        "王彬℘࿐".to_string()
+        String::new()
     }
 
     async fn post_process(&self, mut msgs: Vec<WxMessage>) -> Vec<WxMessage> {
         let local_user = self.get_local_user().await;
+        if local_user.is_empty() {
+            return msgs;
+        }
         for m in &mut msgs {
             if m.sender == local_user {
                 m.is_self = true;
@@ -66,35 +61,49 @@ impl WxClient {
 
     /// New messages since the daemon's last check (incremental).
     pub async fn new_messages(&self) -> Result<Vec<WxMessage>> {
-        let msgs: Vec<WxMessage> = self.run_json(&["new-messages"]).await?;
+        let msgs: Vec<WxMessage> = self.run_json(&["new-messages", "--format", "json"]).await?;
         Ok(self.post_process(msgs).await)
     }
 
     /// Recent message history for a specific contact or group.
     pub async fn history(&self, contact: &str, limit: usize) -> Result<Vec<WxMessage>> {
-        let limit_str = limit.to_string();
-        let msgs: Vec<WxMessage> = self.run_json(&["history", contact, "--limit", &limit_str]).await?;
+        let n = limit.to_string();
+        let msgs: Vec<WxMessage> = self
+            .run_json(&["history", contact, "-n", &n, "--format", "json"])
+            .await?;
         Ok(self.post_process(msgs).await)
     }
 
     /// Export all messages for a contact (for distillation).
-    /// Falls back to a large history if `export` subcommand is unavailable.
     pub async fn export_all(&self, contact: &str) -> Result<Vec<WxMessage>> {
-        let msgs = match self.run_json::<ExportWrapper>(&["export", contact, "--format", "json"]).await {
-            Ok(wrapper) => wrapper.messages,
-            Err(_) => match self.run_json::<Vec<WxMessage>>(&["export", contact, "--format", "json"]).await {
-                Ok(msgs) => msgs,
-                Err(_) => self.run_json::<Vec<WxMessage>>(&["history", contact, "--limit", "2000"]).await?,
-            },
-        };
+        let msgs: Vec<WxMessage> = self
+            .run_json(&["export", contact, "--format", "json"])
+            .await?;
+        Ok(self.post_process(msgs).await)
+    }
+
+    /// Export messages with a count limit.
+    pub async fn export_n(&self, contact: &str, n: usize) -> Result<Vec<WxMessage>> {
+        let count = n.to_string();
+        let msgs: Vec<WxMessage> = self
+            .run_json(&["export", contact, "-n", &count, "--format", "json"])
+            .await?;
+        Ok(self.post_process(msgs).await)
+    }
+
+    /// Export messages since a date (YYYY-MM-DD).
+    pub async fn export_since(&self, contact: &str, since: &str) -> Result<Vec<WxMessage>> {
+        let msgs: Vec<WxMessage> = self
+            .run_json(&["export", contact, "--since", since, "--format", "json"])
+            .await?;
         Ok(self.post_process(msgs).await)
     }
 
     pub async fn sessions(&self) -> Result<Vec<WxSession>> {
-        self.run_json(&["sessions"]).await
+        self.run_json(&["sessions", "--format", "json"]).await
     }
 
     pub async fn contacts(&self) -> Result<Vec<WxContact>> {
-        self.run_json(&["contacts"]).await
+        self.run_json(&["contacts", "--format", "json"]).await
     }
 }

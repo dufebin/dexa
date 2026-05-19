@@ -1,15 +1,16 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use tokio::fs;
-use wx_core::{VisionBrainClient, WxClient, WxMessage};
+use wx_core::{ContactProfile, VisionBrainClient, WxClient, WxMessage};
 
 /// Distill the user's own messages across all contacts into a SKILL.md file.
-/// If `contact` is Some, only use messages from that conversation.
+/// `contact` limits to one conversation; `contacts` injects known relationship context.
 pub async fn distill_self(
     contact: Option<&str>,
     wx: &WxClient,
     vb: &VisionBrainClient,
     output_path: &PathBuf,
+    contacts: &[ContactProfile],
 ) -> Result<()> {
     let my_messages = if let Some(name) = contact {
         println!("Exporting self-messages from conversation with 「{name}」…");
@@ -44,6 +45,7 @@ pub async fn distill_self(
         .await
         .context("vision-brain self-distill failed")?;
 
+    let contacts_section = build_contacts_section(contacts);
     let skill_content = format!(
         r#"---
 name: wechat-self
@@ -53,6 +55,21 @@ metadata:
 ---
 
 {persona_md}
+
+## Part C — 可用工具
+
+| 命令 | 用途 |
+|------|------|
+| `wx-agent send <联系人> <消息>` | 发送微信消息 |
+| `wx-agent distill contact <联系人>` | 蒸馏联系人画像并保存到本地 |
+| `wx-agent distill self [--from <联系人>]` | 更新此自我画像 |
+| `wx-agent distill list` | 列出所有已蒸馏联系人 |
+| `wx-agent watch [--auto]` | 启动新消息监听和自动回复守护进程 |
+| `wx-agent profile <联系人>` | 查看联系人画像详情 |
+
+## Part D — 已知联系人关系图
+
+{contacts_section}
 "#
     );
 
@@ -65,4 +82,25 @@ metadata:
 
     println!("  Self persona written to {:?}", output_path);
     Ok(())
+}
+
+fn build_contacts_section(contacts: &[ContactProfile]) -> String {
+    if contacts.is_empty() {
+        return "（暂无已蒸馏联系人画像，运行 `wx-agent distill contact <name>` 添加）".to_string();
+    }
+    contacts
+        .iter()
+        .map(|p| {
+            let topics = if p.topics.is_empty() {
+                "—".to_string()
+            } else {
+                p.topics.join("、")
+            };
+            format!(
+                "- **{}** — {} | 风格：{} | 话题：{} | 策略：{}",
+                p.contact_name, p.relationship, p.communication_style, topics, p.response_strategy
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }

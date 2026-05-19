@@ -81,6 +81,17 @@ impl Database {
         Ok(rows.into_iter().map(|(n,)| n).collect())
     }
 
+    pub async fn list_all_profiles(&self) -> Result<Vec<ContactProfile>> {
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT data FROM contact_profiles ORDER BY updated_at DESC")
+                .fetch_all(&self.pool)
+                .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(data,)| serde_json::from_str(&data).ok())
+            .collect())
+    }
+
     // ── pending messages ─────────────────────────────────────────────────────
 
     /// Insert a new message if not already present (idempotent).

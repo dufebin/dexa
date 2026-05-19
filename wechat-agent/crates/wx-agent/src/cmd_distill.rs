@@ -2,6 +2,7 @@ use anyhow::Result;
 use wx_core::{Database, VisionBrainClient, WxClient};
 use wx_distill::{distill_contact, distill_self};
 
+
 use crate::config::{default_db_path, default_skill_path, Config};
 
 pub async fn run_contact(contact: &str, cfg: &Config) -> Result<()> {
@@ -27,9 +28,11 @@ pub async fn run_contact(contact: &str, cfg: &Config) -> Result<()> {
 pub async fn run_self(contact: Option<&str>, cfg: &Config) -> Result<()> {
     let wx = WxClient::new(cfg.wx_bin());
     let vb = VisionBrainClient::new(cfg.vision_brain_bin());
+    let db = Database::open(&default_db_path()).await?;
+    let profiles = db.list_all_profiles().await?;
     let out = default_skill_path();
 
-    distill_self(contact, &wx, &vb, &out).await?;
+    distill_self(contact, &wx, &vb, &out, &profiles).await?;
     println!("\n自我蒸馏完成，可在 Hermes/OpenClaw 中用 /wechat-self 调用。");
     Ok(())
 }
