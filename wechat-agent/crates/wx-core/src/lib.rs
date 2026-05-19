@@ -6,6 +6,6 @@ pub mod wx_client;
 
 pub use db::Database;
 pub use hand_client::HandClient;
-pub use llm::LlmClient;
+pub use llm::VisionBrainClient;
 pub use models::{ContactProfile, PendingMessage, WxContact, WxMessage, WxSession};
 pub use wx_client::WxClient;

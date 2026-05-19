@@ -4,10 +4,14 @@ wx   = "D:\\workspace\\dexa\\wechat-agent\\crates\\wx-cli\\wx-cli.exe"
 # desktop-hand binary
 hand = "D:\\workspace\\dexa\\desktop-hand\\target\\release\\hand.exe"
 
-[claude]
-api_key       = ""   # set via WX_AGENT_API_KEY env var or here
-reply_model   = "claude-haiku-4-5-20251001"
-distill_model = "claude-sonnet-4-6"
+[vision_brain]
+# Path to vision-brain binary (downloaded from https://fang.deephealth.net/vision-brain.exe)
+bin = "D:\\workspace\\dexa\\vision-brain.exe"
+# LLM settings are configured via environment variables, not here:
+#   LLM_PROVIDER = "anthropic" | "openai"  (default: anthropic)
+#   LLM_API_KEY  = "your-api-key"
+#   LLM_MODEL    = "model-name"             (optional, uses provider default)
+#   LLM_API_URL  = "https://..."            (optional, for OpenAI-compatible APIs)
 
 [agent]
 # "semi" = confirm each reply, "auto" = send automatically

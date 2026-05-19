@@ -33,7 +33,7 @@ wechat-agent/
 | `models.rs` | All shared data types: `WxMessage`, `WxSession`, `WxContact`, `ContactProfile`, `PendingMessage` |
 | `wx_client.rs` | `WxClient` — thin async wrapper around `wx` CLI subprocess. Parses `--json` output. |
 | `hand_client.rs` | `HandClient` — thin async wrapper around `hand` CLI subprocess. One method per `hand` subcommand. |
-| `llm.rs` | `LlmClient` — calls Claude API via `reqwest`. Three public methods: `generate_reply`, `distill_contact`, `distill_self`. |
+| `llm.rs` | `VisionBrainClient` — spawns `vision-brain llm <subcommand>` subprocess. Three public methods: `generate_reply`, `distill_contact`, `distill_self`. LLM is configured via env vars on the vision-brain side. |
 | `db.rs` | `Database` — SQLite via `sqlx`. Tables: `contact_profiles`, `pending_messages`. |
 | `lib.rs` | Re-exports everything from the modules above. |
 
@@ -62,7 +62,7 @@ wechat-agent/
 - **Pending message queue**: `wx new-messages` consumes messages from wx-cli's internal state. We immediately write all incoming messages to SQLite with `status = 'pending'` before processing. This makes restarts safe — unprocessed messages survive a crash.
 - **`require_profile = true` default**: The agent only auto-replies to contacts that have been explicitly distilled. This prevents accidental replies to strangers.
 - **Platform shortcuts via `cfg!`**: `search_key` defaults to `cmd+f` on macOS and `ctrl+f` on Windows. Overridable in `config.toml`.
-- **Haiku for replies, Sonnet for distillation**: Reply generation is high-frequency (one call per message), so Haiku keeps cost low. Distillation is a one-shot analysis where quality matters.
+- **LLM lives in vision-brain, not here**: All LLM operations are delegated to `vision-brain llm distill-contact / generate-reply / distill-self` subprocesses. wechat-agent has zero direct LLM API calls. LLM provider, model, and API key are configured via env vars (`LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_API_URL`) that vision-brain reads.
 
 ## wx-cli output format notes
 
@@ -88,9 +88,10 @@ Key fields that wx-cli is expected to provide:
 
 ## Adding a new LLM feature
 
-1. Add a method to `LlmClient` in `wx-core/src/llm.rs`.
-2. It should call `self.call(model, system, prompt, max_tokens)` and return `Result<String>`.
-3. If the output needs structured parsing, parse JSON in the calling code, not in `llm.rs`.
+1. Add the LLM logic to `vision-brain/src/vision.rs` (pub async fn).
+2. Wire it as a service method in `vision-brain/src/service.rs`.
+3. Expose it as a `vision-brain llm <subcommand>` in `vision-brain/src/cli.rs`.
+4. Add a `VisionBrainClient` method in `wx-core/src/llm.rs` that spawns the subcommand.
 
 ## Dependencies
 
@@ -98,7 +99,7 @@ Key fields that wx-cli is expected to provide:
 |-------|---------|---------|
 | tokio | 1 | Async runtime |
 | serde / serde_json | 1 | Serialization |
-| reqwest | 0.12 | HTTP client for Claude API |
+| reqwest | 0.12 | (retained, no longer used for LLM; can be removed) |
 | sqlx | 0.8 | SQLite async driver |
 | clap | 4 | CLI argument parsing |
 | anyhow / thiserror | latest | Error handling |
@@ -113,3 +114,4 @@ Key fields that wx-cli is expected to provide:
 |------|--------|---------|
 | `wx` | [jackwener/wx-cli](https://github.com/jackwener/wx-cli) | Reading WeChat local databases |
 | `hand` | `../desktop-hand` (this repo) | Mouse/keyboard UI automation |
+| `vision-brain` | `../vision-brain` (this repo) | All LLM operations (distill, reply generation) |

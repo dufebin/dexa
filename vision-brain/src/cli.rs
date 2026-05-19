@@ -1,5 +1,6 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use std::io::Read as IoRead;
 use std::sync::Arc;
 
 use crate::service::Service;
@@ -29,6 +30,11 @@ pub enum Commands {
     App {
         #[command(subcommand)]
         cmd: AppCmd,
+    },
+    /// LLM text operations: distill contacts, generate replies, distill self persona
+    Llm {
+        #[command(subcommand)]
+        cmd: LlmCmd,
     },
     /// Run as MCP stdio server
     Mcp,
@@ -81,6 +87,19 @@ pub enum AppCmd {
     },
 }
 
+#[derive(Subcommand)]
+pub enum LlmCmd {
+    /// Distill a contact's chat history into a JSON profile.
+    /// Reads JSON from stdin: {"contact": "name", "messages": "chat text"}
+    DistillContact,
+    /// Generate a WeChat reply for an incoming message.
+    /// Reads JSON from stdin: {"sender": "name", "content": "msg", "history": "text", "profile": "json|null", "max_len": 80}
+    GenerateReply,
+    /// Distill the user's own messages into a persona Markdown document.
+    /// Reads JSON from stdin: {"messages": "chat text"}
+    DistillSelf,
+}
+
 // ── runner ────────────────────────────────────────────────────────────────────
 
 pub async fn run(cli: Cli, service: Arc<Service>) -> Result<()> {
@@ -88,6 +107,7 @@ pub async fn run(cli: Cli, service: Arc<Service>) -> Result<()> {
         Commands::Screen { cmd } => run_screen(cmd, service).await,
         Commands::Memory { cmd } => run_memory(cmd, service).await,
         Commands::App { cmd } => run_app(cmd, service).await,
+        Commands::Llm { cmd } => run_llm(cmd, service).await,
         Commands::Mcp => crate::mcp::run_mcp_server(service).await,
     }
 }
@@ -138,6 +158,51 @@ async fn run_app(cmd: AppCmd, service: Arc<Service>) -> Result<()> {
         AppCmd::Open { query } => {
             let v = service.app_open(query).await?;
             println!("{}", serde_json::to_string_pretty(&v)?);
+        }
+    }
+    Ok(())
+}
+
+async fn run_llm(cmd: LlmCmd, service: Arc<Service>) -> Result<()> {
+    let mut input = String::new();
+    std::io::stdin()
+        .read_to_string(&mut input)
+        .context("failed to read stdin")?;
+    let val: serde_json::Value =
+        serde_json::from_str(&input).context("stdin is not valid JSON")?;
+
+    match cmd {
+        LlmCmd::DistillContact => {
+            let contact  = val["contact"].as_str().context("missing 'contact' in input")?;
+            let messages = val["messages"].as_str().context("missing 'messages' in input")?;
+            let result = service.llm_distill_contact(contact, messages).await?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
+        LlmCmd::GenerateReply => {
+            let sender   = val["sender"].as_str().context("missing 'sender' in input")?;
+            let content  = val["content"].as_str().context("missing 'content' in input")?;
+            let history  = val["history"].as_str().unwrap_or("");
+            let profile  = val["profile"].as_str();
+            let max_len  = val["max_len"].as_u64().unwrap_or(80) as usize;
+            let result = service
+                .llm_generate_reply(sender, content, history, profile, max_len)
+                .await?;
+            // Print only the reply text for easy subprocess consumption.
+            if let Some(reply) = result["reply"].as_str() {
+                println!("{reply}");
+            } else {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            }
+        }
+        LlmCmd::DistillSelf => {
+            let messages = val["messages"].as_str().context("missing 'messages' in input")?;
+            let result = service.llm_distill_self(messages).await?;
+            // Print only the markdown for easy file-write consumption.
+            if let Some(md) = result["markdown"].as_str() {
+                println!("{md}");
+            } else {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            }
         }
     }
     Ok(())

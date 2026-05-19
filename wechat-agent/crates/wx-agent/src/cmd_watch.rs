@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::io::{self, Write as IoWrite};
 use std::time::Duration;
 use tokio::time::sleep;
-use wx_core::{Database, HandClient, LlmClient, PendingMessage, WxClient};
+use wx_core::{Database, HandClient, VisionBrainClient, PendingMessage, WxClient};
 
 use crate::config::{default_db_path, Config};
 use crate::wechat_ui;
@@ -10,12 +10,8 @@ use crate::wechat_ui;
 pub async fn run(auto: bool, cfg: &Config) -> Result<()> {
     let wx   = WxClient::new(cfg.wx_bin());
     let hand = HandClient::new(cfg.hand_bin());
-    let llm  = LlmClient::new(
-        &cfg.claude.api_key,
-        &cfg.claude.reply_model,
-        &cfg.claude.distill_model,
-    );
-    let db = Database::open(&default_db_path()).await?;
+    let vb   = VisionBrainClient::new(cfg.vision_brain_bin());
+    let db   = Database::open(&default_db_path()).await?;
 
     let auto = auto || cfg.agent.mode == "auto";
     let mode = if auto { "全自动" } else { "半自动（需确认）" };
@@ -48,7 +44,6 @@ pub async fn run(auto: bool, cfg: &Config) -> Result<()> {
         // 2. Process all pending messages.
         let pending = db.pending_messages().await.unwrap_or_default();
         for msg in pending {
-            // Skip if profile required but not available.
             if cfg.agent.require_profile {
                 let profile = db.get_profile(&msg.sender).await.ok().flatten();
                 if profile.is_none() {
@@ -61,7 +56,7 @@ pub async fn run(auto: bool, cfg: &Config) -> Result<()> {
                 }
             }
 
-            if let Err(e) = process_message(&msg, auto, cfg, &wx, &hand, &llm, &db).await {
+            if let Err(e) = process_message(&msg, auto, cfg, &wx, &hand, &vb, &db).await {
                 tracing::error!("Failed to process message {}: {e}", msg.msg_id);
             }
         }
@@ -76,12 +71,11 @@ async fn process_message(
     cfg: &Config,
     wx: &WxClient,
     hand: &HandClient,
-    llm: &LlmClient,
+    vb: &VisionBrainClient,
     db: &Database,
 ) -> Result<()> {
     let sender = &msg.sender;
 
-    // Fetch context and profile.
     let history = wx.history(sender, 50).await.unwrap_or_default();
     let history_text = history
         .iter()
@@ -94,8 +88,7 @@ async fn process_message(
 
     let profile = db.get_profile(sender).await.ok().flatten();
 
-    // Generate reply.
-    let reply = llm
+    let reply = vb
         .generate_reply(
             &msg.content,
             sender,
@@ -110,7 +103,6 @@ async fn process_message(
         println!("  ✦ 自动回复: {reply}\n");
         reply.clone()
     } else {
-        // Semi-auto: prompt user to confirm.
         println!("┌─────────────────────────────────────────────");
         println!("│ 来自 {sender}: {}", msg.content);
         println!("│ 建议回复: {reply}");
@@ -136,10 +128,7 @@ async fn process_message(
                 io::stdin().read_line(&mut edited)?;
                 edited.trim().to_string()
             }
-            other => {
-                // Treat any other input as a custom reply.
-                other.to_string()
-            }
+            other => other.to_string(),
         }
     };
 
@@ -148,7 +137,6 @@ async fn process_message(
         return Ok(());
     }
 
-    // Send via WeChat UI.
     wechat_ui::send_message(
         sender,
         &final_reply,

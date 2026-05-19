@@ -6,7 +6,8 @@ use std::path::PathBuf;
 pub struct Config {
     #[serde(default)]
     pub binaries: BinariesConfig,
-    pub claude: ClaudeConfig,
+    #[serde(default)]
+    pub vision_brain: VisionBrainConfig,
     #[serde(default)]
     pub agent: AgentConfig,
     #[serde(default)]
@@ -31,17 +32,19 @@ fn default_wx() -> String   { "wx".into() }
 fn default_hand() -> String { "hand".into() }
 
 #[derive(Debug, Deserialize)]
-pub struct ClaudeConfig {
-    #[serde(default)]
-    pub api_key: String,
-    #[serde(default = "default_reply_model")]
-    pub reply_model: String,
-    #[serde(default = "default_distill_model")]
-    pub distill_model: String,
+pub struct VisionBrainConfig {
+    /// Path to the vision-brain binary.
+    #[serde(default = "default_vision_brain_bin")]
+    pub bin: String,
 }
 
-fn default_reply_model() -> String   { "claude-haiku-4-5-20251001".into() }
-fn default_distill_model() -> String { "claude-sonnet-4-6".into() }
+impl Default for VisionBrainConfig {
+    fn default() -> Self {
+        Self { bin: default_vision_brain_bin() }
+    }
+}
+
+fn default_vision_brain_bin() -> String { "vision-brain".into() }
 
 #[derive(Debug, Deserialize)]
 pub struct AgentConfig {
@@ -94,12 +97,8 @@ impl Config {
             if path.exists() {
                 let raw = std::fs::read_to_string(path)
                     .with_context(|| format!("failed to read {:?}", path))?;
-                let mut cfg: Config = toml::from_str(&raw)
+                let cfg: Config = toml::from_str(&raw)
                     .with_context(|| format!("failed to parse {:?}", path))?;
-                // Environment variable overrides the config file API key.
-                if let Ok(key) = std::env::var("WX_AGENT_API_KEY") {
-                    cfg.claude.api_key = key;
-                }
                 return Ok(cfg);
             }
         }
@@ -109,8 +108,9 @@ impl Config {
         )
     }
 
-    pub fn wx_bin(&self)   -> PathBuf { PathBuf::from(&self.binaries.wx) }
+    pub fn wx_bin(&self) -> PathBuf { PathBuf::from(&self.binaries.wx) }
     pub fn hand_bin(&self) -> PathBuf { PathBuf::from(&self.binaries.hand) }
+    pub fn vision_brain_bin(&self) -> PathBuf { PathBuf::from(&self.vision_brain.bin) }
 
     pub fn wechat_search_key(&self) -> &str {
         self.wechat.search_key.as_deref().unwrap_or_else(|| {

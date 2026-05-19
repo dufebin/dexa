@@ -61,6 +61,29 @@ impl Service {
         Ok(serde_json::to_value(apps)?)
     }
 
+    pub async fn llm_distill_contact(&self, contact: &str, messages: &str) -> Result<Value> {
+        let json_str = vision::distill_contact(contact, messages).await?;
+        let val: Value = serde_json::from_str(&json_str)?;
+        Ok(val)
+    }
+
+    pub async fn llm_generate_reply(
+        &self,
+        sender: &str,
+        content: &str,
+        history: &str,
+        profile_json: Option<&str>,
+        max_len: usize,
+    ) -> Result<Value> {
+        let reply = vision::generate_reply(sender, content, history, profile_json, max_len).await?;
+        Ok(json!({ "reply": reply }))
+    }
+
+    pub async fn llm_distill_self(&self, messages: &str) -> Result<Value> {
+        let md = vision::distill_self(messages).await?;
+        Ok(json!({ "markdown": md }))
+    }
+
     pub async fn app_open(&self, query: String) -> Result<Value> {
         let app_list = tokio::task::spawn_blocking(apps::discover_apps).await?;
 

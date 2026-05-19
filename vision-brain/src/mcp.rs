@@ -34,6 +34,26 @@ pub struct AppOpenParams {
     pub query: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct LlmDistillContactParams {
+    pub contact: String,
+    pub messages: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct LlmGenerateReplyParams {
+    pub sender: String,
+    pub content: String,
+    pub history: String,
+    pub profile: Option<String>,
+    pub max_len: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct LlmDistillSelfParams {
+    pub messages: String,
+}
+
 // ── server ────────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -142,6 +162,54 @@ impl VisionServer {
     ) -> Result<String, McpError> {
         self.service
             .app_open(p.query)
+            .await
+            .map(|v| v.to_string())
+            .map_err(mcp_err)
+    }
+
+    #[tool(
+        description = "Distill a WeChat contact's chat history into a structured JSON profile. Returns {summary, communication_style, topics, emotional_pattern, relationship, response_strategy}."
+    )]
+    async fn llm_distill_contact(
+        &self,
+        Parameters(p): Parameters<LlmDistillContactParams>,
+    ) -> Result<String, McpError> {
+        self.service
+            .llm_distill_contact(&p.contact, &p.messages)
+            .await
+            .map(|v| v.to_string())
+            .map_err(mcp_err)
+    }
+
+    #[tool(
+        description = "Generate a WeChat reply for an incoming message using the contact's profile. Returns {\"reply\": string}."
+    )]
+    async fn llm_generate_reply(
+        &self,
+        Parameters(p): Parameters<LlmGenerateReplyParams>,
+    ) -> Result<String, McpError> {
+        self.service
+            .llm_generate_reply(
+                &p.sender,
+                &p.content,
+                &p.history,
+                p.profile.as_deref(),
+                p.max_len.unwrap_or(80) as usize,
+            )
+            .await
+            .map(|v| v.to_string())
+            .map_err(mcp_err)
+    }
+
+    #[tool(
+        description = "Distill the user's own WeChat messages into a Self Memory + Persona Markdown document. Returns {\"markdown\": string}."
+    )]
+    async fn llm_distill_self(
+        &self,
+        Parameters(p): Parameters<LlmDistillSelfParams>,
+    ) -> Result<String, McpError> {
+        self.service
+            .llm_distill_self(&p.messages)
             .await
             .map(|v| v.to_string())
             .map_err(mcp_err)
